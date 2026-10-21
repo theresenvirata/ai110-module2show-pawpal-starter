@@ -119,10 +119,15 @@ class Task:
         return self.next_task
 
     def mark_incomplete(self) -> None:
-        """Undo a completion, removing the next occurrence it created."""
+        """Undo a completion, removing the next occurrence it created.
+
+        If that occurrence was completed too, its own next occurrence is
+        removed as well, and so on down the chain.
+        """
         self.completed = False
         self.completed_on = None
         if self.next_task is not None:
+            self.next_task.mark_incomplete()
             if self.next_task.pet is not None:
                 self.next_task.pet.remove_task(self.next_task)
             self.next_task = None

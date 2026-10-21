@@ -57,31 +57,50 @@ Plan for Jordan on Tuesday 20 October 2026:
   17:00-17:20  Laser pointer play for Mochi [MEDIUM] - earliest free slot in its window
 ```
 
-## 🧪 Testing PawPal+
+## Testing PawPal+
+
+Run the full test suite from the project root (with the virtual environment activated):
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
+
+The tests in `tests/test_pawpal.py` cover:
+
+- **Sorting:** `sort_by_time` returns tasks in chronological order, using the booked time once a task is scheduled. `sort_by_priority` puts the highest priority first and breaks ties by the tighter time window.
+- **Recurring tasks:** completing a daily task creates a copy due the next day (including from Dec 31 to Jan 1). Completing a weekly task, even late, creates a copy due on its next weekday. Completing a task twice or undoing a completion leaves no extra copies, even when later copies were also completed.
+- **Conflict detection:** `detect_conflicts` flags tasks that start at the same time or overlap, for the same pet or different pets, and reports every overlapping pair. Back-to-back tasks and unscheduled tasks are not flagged.
+- **Scheduling boundaries:** a task that exactly fills its window gets scheduled, a task longer than its window is listed as unscheduled, a generated plan has no conflicts, and generating a plan twice gives the same result.
 
 Sample test output:
 
 ```
-==================================================== test session starts =====================================================
+========================================================= test session starts ==========================================================
 platform win32 -- Python 3.14.8, pytest-9.1.1, pluggy-1.7.0
 rootdir: C:\Users\there\OneDrive\Documents\Visual Studio Code\ai110-module2show-pawpal-starter
 configfile: pytest.ini
 testpaths: tests
 plugins: anyio-4.15.1
-collected 2 items                                                                                                             
+collected 21 items                                                                                                                      
 
-tests\test_pawpal.py ..                                                                                                 [100%]
+tests\test_pawpal.py ..............x......                                                                                        [100%]
 
-===================================================== 2 passed in 0.02s ======================================================
+==================================================== 20 passed, 1 xfailed in 0.08s =====================================================
+(.venv) PS C:\Users\there\OneDrive\Documents\Visual Studio Code\ai110-module2show-pawpal-starter> python -m pytest
+========================================================= test session starts ==========================================================
+platform win32 -- Python 3.14.8, pytest-9.1.1, pluggy-1.7.0
+rootdir: C:\Users\there\OneDrive\Documents\Visual Studio Code\ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 21 items                                                                                                                      
+
+tests\test_pawpal.py .....................                                                                                        [100%]
+
+========================================================== 21 passed in 0.02s ==========================================================
 ```
+
+My confidence level is a 5 in the system's reliability based on test results.
 
 ## Short Implementation Summary
 
