@@ -1,38 +1,93 @@
 classDiagram
-    %% Initial design for PawPal+. Keep this file updated so it matches your final implementation.
+    %% PawPal+ design. Keep this file updated so it matches your final implementation.
 
     class Owner {
         +str name
         +list~Pet~ pets
-        +Scheduler planner
+        +dict~TaskCategory, time~ preferences
         +add_pet(pet: Pet) None
         +remove_pet(pet: Pet) None
+        +get_pet(name: str) Pet
+        +get_all_tasks() list~Task~
+        +set_preference(category: TaskCategory, preferred_time: time) None
+        +remove_preference(category: TaskCategory) None
     }
 
     class Pet {
         +str name
         +int age
         +str breed
-    }
-
-    class Task {
-        +str title
-        +int priority
-        +Pet pet
-        +str time_availability
-        +set_priority(priority: int) None
-        +set_time_availability(time_availability: str) None
-    }
-
-    class Scheduler {
         +list~Task~ tasks
-        +date date
-        +dict~time, Task~ timetable
         +add_task(task: Task) None
         +remove_task(task: Task) None
     }
 
+    class Priority {
+        <<enumeration>>
+        LOW = 1
+        MEDIUM = 2
+        HIGH = 3
+    }
+
+    class TaskCategory {
+        <<enumeration>>
+        WALK
+        FEEDING
+        MEDS
+        ENRICHMENT
+        GROOMING
+        OTHER
+    }
+
+    class Frequency {
+        <<enumeration>>
+        DAILY
+        WEEKLY
+    }
+
+    class Task {
+        +str description
+        +TaskCategory category
+        +Priority priority
+        +int duration_minutes
+        +time available_from
+        +time available_until
+        +Frequency frequency
+        +int weekday
+        +bool completed
+        +date completed_on
+        +time scheduled_at
+        +Pet pet
+        +set_priority(priority: Priority) None
+        +set_duration(duration_minutes: int) None
+        +set_time_availability(available_from: time, available_until: time) None
+        +mark_complete(on: date) None
+        +mark_incomplete() None
+        +is_due(on: date) bool
+        +label() str
+    }
+
+    class Scheduler {
+        +Owner owner
+        +date plan_date
+        +time day_start
+        +time day_end
+        +dict~time, Task~ timetable
+        +list~Task~ unscheduled
+        +dict~Task, str~ reasons
+        +get_due_tasks() list~Task~
+        +filter_tasks(pet_name: str, completed: bool) list~Task~
+        +sort_by_priority(tasks: list~Task~) list~Task~
+        +mark_task_complete(task: Task) None
+        +has_conflict(start: time, task: Task) bool
+        +generate_plan() dict~time, Task~
+        +explain_plan() str
+    }
+
     Owner "1" o-- "*" Pet : owns
-    Owner "1" --> "1" Scheduler : uses as planner
-    Scheduler "1" o-- "*" Task : schedules
-    Task "*" --> "1" Pet : is for
+    Pet "1" *-- "*" Task : has
+    Scheduler "1" --> "1" Owner : reads tasks via get_all_tasks()
+    Owner ..> TaskCategory : sets preferences by
+    Task --> Priority : has
+    Task --> TaskCategory : has
+    Task --> Frequency : repeats

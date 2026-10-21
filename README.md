@@ -47,11 +47,14 @@ pip install -r requirements.txt
 Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+============================================================
+Today's Schedule
+============================================================
+Plan for Jordan on Tuesday 20 October 2026:
+  07:30-08:00  Morning walk for Biscuit [HIGH] - at your preferred time
+  08:00-08:10  Breakfast for Biscuit [HIGH] - earliest free slot in its window
+  12:00-12:05  Thyroid meds for Mochi [HIGH] - earliest free slot in its window
+  17:00-17:20  Laser pointer play for Mochi [MEDIUM] - earliest free slot in its window
 ```
 
 ## 🧪 Testing PawPal+
@@ -67,8 +70,39 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+==================================================== test session starts =====================================================
+platform win32 -- Python 3.14.8, pytest-9.1.1, pluggy-1.7.0
+rootdir: C:\Users\there\OneDrive\Documents\Visual Studio Code\ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 2 items                                                                                                             
+
+tests\test_pawpal.py ..                                                                                                 [100%]
+
+===================================================== 2 passed in 0.02s ======================================================
 ```
+
+## Short Implementation Summary
+
+PawPal+ keeps track of care tasks for all of an owner's pets and builds a daily plan around priorities, time windows, and the owner's preferred times. The logic lives in `pawpal_system.py`; `main.py` runs a demo from the terminal.
+
+**Classes**
+
+- **`Task`**: one care activity. Stores a description, category (walk, feeding, meds, …), priority, duration, the time window it can happen in, how often it repeats (daily or weekly), and whether it's done. `is_due(date)` says whether it needs doing on a given day.
+- **`Pet`**: a pet's details plus its own list of tasks. `add_task()` also links the task back to the pet.
+- **`Owner`**: holds the pets and the owner's preferred times for each kind of task, such as walks at 7:30. `get_all_tasks()` returns every pet's tasks in one list.
+- **`Scheduler`**: the planner. It is given an `Owner` and reads tasks only through `owner.get_all_tasks()`, so it plans across all pets at once.
+
+**How a plan is made** (`Scheduler.generate_plan()`)
+
+1. Collect every task due on the plan date. Tasks already completed that day, and weekly tasks on other days, are left out.
+2. Sort by priority, highest first. If two tasks tie, the one with the shorter time window goes first.
+3. Give each task the earliest start time inside its window that doesn't overlap a task already placed. If the owner has a preferred time for that category, try the times closest to it first.
+4. Put any task that can't fit into `unscheduled`.
+
+`explain_plan()` prints the timetable along with the reason for each placement and each skipped task.
+
 
 ## 📐 Smarter Scheduling
 
