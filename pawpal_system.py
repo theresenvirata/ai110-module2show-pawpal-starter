@@ -1,8 +1,9 @@
 """PawPal+ core classes, based on diagrams/uml.mmd."""
 
-from dataclasses import dataclass, field
-from datetime import date, time
+from dataclasses import dataclass, field, replace
+from datetime import date, time, timedelta
 from enum import Enum
+from itertools import combinations
 
 SLOT_STEP_MINUTES = 5  # granularity used when searching for a free start time
 
@@ -15,6 +16,22 @@ def to_minutes(t: time) -> int:
 def to_time(minutes: int) -> time:
     """Convert minutes since midnight to a time of day."""
     return time(minutes // 60, minutes % 60)
+
+
+def overlaps(start_a: time, task_a: "Task", start_b: time, task_b: "Task") -> bool:
+    """Return True if the two tasks, at these start times, share any minute.
+
+    Back-to-back tasks (one ends at 8:00, the next starts at 8:00) don't overlap.
+    """
+    a = to_minutes(start_a)
+    b = to_minutes(start_b)
+    return a < b + task_b.duration_minutes and b < a + task_a.duration_minutes
+
+
+def _span(task: "Task") -> str:
+    """'HH:MM-HH:MM' for a scheduled task."""
+    start = to_minutes(task.scheduled_at)
+    return f"{task.scheduled_at:%H:%M}-{to_time(start + task.duration_minutes):%H:%M}"
 
 
 class Priority(Enum):
@@ -49,11 +66,14 @@ class Task:
     available_until: time
     frequency: Frequency = Frequency.DAILY
     weekday: int | None = None  # 0 = Monday; only used for weekly tasks
+    due_date: date | None = None  # not due before this date; None = due from the start
     completed: bool = False
     completed_on: date | None = None
     scheduled_at: time | None = None  # set by Scheduler.generate_plan()
     # Set by Pet.add_task(). Hidden from repr so Pet -> Task -> Pet doesn't loop.
     pet: "Pet | None" = field(default=None, repr=False)
+    # The occurrence created when this one was completed (see mark_complete).
+    next_task: "Task | None" = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Reject invalid durations, time windows, and weekly tasks without a weekday."""
@@ -81,23 +101,51 @@ class Task:
         self.available_from = available_from
         self.available_until = available_until
 
-    def mark_complete(self, on: date | None = None) -> None:
-        """Mark this task done for the given date (default today)."""
+    def mark_complete(self, on: date | None = None) -> "Task | None":
+        """Mark this task done for the given date (default today).
+
+        Also creates the next occurrence (tomorrow for daily tasks, the next
+        matching weekday for weekly ones) and gives it to the same pet.
+        Returns the new task, or None if this one was already completed.
+        """
+        if self.completed:
+            return None
+        on = on or date.today()
         self.completed = True
-        self.completed_on = on or date.today()
+        self.completed_on = on
+        self.next_task = self.next_occurrence(on)
+        if self.pet is not None:
+            self.pet.add_task(self.next_task)
+        return self.next_task
 
     def mark_incomplete(self) -> None:
-        """Undo a completion."""
+        """Undo a completion, removing the next occurrence it created."""
         self.completed = False
         self.completed_on = None
+        if self.next_task is not None:
+            if self.next_task.pet is not None:
+                self.next_task.pet.remove_task(self.next_task)
+            self.next_task = None
+
+    def next_occurrence(self, after: date) -> "Task":
+        """A fresh copy of this task, due on its first repeat after the given date."""
+        if self.frequency is Frequency.WEEKLY:
+            days = (self.weekday - after.weekday() - 1) % 7 + 1  # 1..7
+        else:
+            days = 1
+        return replace(self, due_date=after + timedelta(days=days), completed=False,
+                       completed_on=None, scheduled_at=None, pet=None, next_task=None)
 
     def is_due(self, on: date) -> bool:
         """Return True if this task still needs doing on the given date.
 
-        Daily tasks are due every day; weekly tasks only on their weekday.
-        A task already completed on that date is not due.
+        A completed task is never due again; its next occurrence takes over.
+        Nothing is due before its due_date. After that, daily tasks are due
+        every day and weekly tasks only on their weekday.
         """
-        if self.completed and self.completed_on == on:
+        if self.completed:
+            return False
+        if self.due_date is not None and on < self.due_date:
             return False
         if self.frequency is Frequency.WEEKLY:
             return on.weekday() == self.weekday
@@ -192,19 +240,43 @@ class Scheduler:
             to_minutes(t.available_until) - to_minutes(t.available_from),
         ))
 
-    def mark_task_complete(self, task: Task) -> None:
-        """Mark a task done for plan_date."""
-        task.mark_complete(self.plan_date)
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Earliest first, by scheduled time (or available_from if not yet scheduled).
+
+        Zero-padded "HH:MM" strings sort the same as the times they name,
+        so "07:30" < "12:00" < "17:05".
+        """
+        return sorted(tasks, key=lambda t: (t.scheduled_at or t.available_from).strftime("%H:%M"))
+
+    def mark_task_complete(self, task: Task) -> Task | None:
+        """Mark a task done for plan_date; returns its next occurrence."""
+        return task.mark_complete(self.plan_date)
 
     def has_conflict(self, start: time, task: Task) -> bool:
         """Return True if task, starting at start, would overlap the timetable."""
-        new_start = to_minutes(start)
-        new_end = new_start + task.duration_minutes
-        for placed_start, placed in self.timetable.items():
-            s = to_minutes(placed_start)
-            if new_start < s + placed.duration_minutes and s < new_end:
-                return True
-        return False
+        return any(overlaps(start, task, placed_start, placed)
+                   for placed_start, placed in self.timetable.items())
+
+    def detect_conflicts(self, tasks: list[Task] | None = None) -> list[str]:
+        """Return a warning for every pair of tasks whose scheduled times overlap.
+
+        Checks the given tasks (default: all of the owner's tasks) that have a
+        scheduled_at, whether they belong to the same pet or different pets.
+        Tasks without a time are skipped. This never raises: an empty list
+        means no conflicts.
+        """
+        if tasks is None:
+            tasks = self.owner.get_all_tasks()
+        timed = self.sort_by_time([t for t in tasks if t.scheduled_at is not None])
+        warnings = []
+        for a, b in combinations(timed, 2):
+            if overlaps(a.scheduled_at, a, b.scheduled_at, b):
+                same_pet = "same pet" if a.pet is not None and a.pet is b.pet else "different pets"
+                warnings.append(
+                    f"Warning: {a.label()} ({_span(a)}) overlaps "
+                    f"{b.label()} ({_span(b)}) [{same_pet}]"
+                )
+        return warnings
 
     def _candidate_starts(self, task: Task) -> list[int]:
         """Possible start times (in minutes) for task, best first."""

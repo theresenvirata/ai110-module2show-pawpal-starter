@@ -96,7 +96,7 @@ PawPal+ keeps track of care tasks for all of an owner's pets and builds a daily 
 
 **How a plan is made** (`Scheduler.generate_plan()`)
 
-1. Collect every task due on the plan date. Tasks already completed that day, and weekly tasks on other days, are left out.
+1. Collect every task due on the plan date. Completed tasks, tasks whose next occurrence isn't due yet, and weekly tasks on other days are left out.
 2. Sort by priority, highest first. If two tasks tie, the one with the shorter time window goes first.
 3. Give each task the earliest start time inside its window that doesn't overlap a task already placed. If the owner has a preferred time for that category, try the times closest to it first.
 4. Put any task that can't fit into `unscheduled`.
@@ -106,13 +106,21 @@ PawPal+ keeps track of care tasks for all of an owner's pets and builds a daily 
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
+| Sort by priority | `Scheduler.sort_by_priority()` | Highest priority first; ties go to the task with the shorter time window. Used by `generate_plan()`. |
+| Sort by time | `Scheduler.sort_by_time()` | Earliest first, by scheduled time, or by window start if not scheduled yet. |
+| Filtering | `Scheduler.filter_tasks()`, `Scheduler.get_due_tasks()` | Filter by pet name, completion status, or both; due tasks only. |
+| Recurring tasks | `Task.mark_complete()`, `Task.next_occurrence()`, `Task.is_due()` | Completing a task creates the next occurrence. |
+| Conflict detection | `Scheduler.detect_conflicts()`, `Scheduler.has_conflict()`, `overlaps()` | Warns about overlapping tasks instead of crashing. |
+
+**Sorting.** `sort_by_priority()` decides the order in which `generate_plan()` places tasks. `sort_by_time()` is for showing tasks in time order. Its `sorted()` key is a lambda that turns each task's time into an `"HH:MM"` string. Zero-padded strings sort the same way as the times they stand for (`"07:30" < "12:00"`).
+
+**Filtering.** `filter_tasks(pet_name=None, completed=None)` narrows the owner's tasks to one pet, to done or not-done tasks, or both. A filter left as `None` is skipped. `get_due_tasks()` keeps only the tasks due on the plan date, and those are the only tasks the scheduler plans.
+
+**Recurring tasks.** When a daily or weekly task is marked complete (`Task.mark_complete()` or `Scheduler.mark_task_complete()`), `next_occurrence()` makes a fresh copy. The copy's `due_date` is the next day for daily tasks, or the same weekday next week for weekly ones, and it is added to the same pet. `is_due()` treats a completed task as finished for good and doesn't let the new copy show up before its `due_date`, so a day never gets two copies of the same task. Completing a task twice does nothing the second time. `mark_incomplete()` removes the copy that was created.
+
+**Conflict detection.** `generate_plan()` uses `has_conflict()` so it never schedules two overlapping tasks. A time can still be set by hand, though, so `detect_conflicts()` checks every pair of timed tasks, for the same pet or different pets. It returns a list of warnings such as `Warning: Morning walk for Biscuit (07:30-08:00) overlaps Thyroid meds for Mochi (07:30-07:35) [different pets]`. An empty list means no conflicts, and it never raises an error. Both methods use the same `overlaps()` check: tasks that share at least one minute conflict, and back-to-back tasks (one ends at 8:00, the next starts at 8:00) don't.
 | Recurring tasks | | e.g., daily vs. weekly |
 
 ## 📸 Demo Walkthrough
