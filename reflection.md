@@ -4,8 +4,10 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+- "Owner" class that can told pets and a planner.
+- Have a "Pet" class that allows you to add a pet with attriutes like their name, age, and breed.
+- Have a "Task" class with attributes of a title, priority, pet, and time availability. These tasks can be created, priority and time availability can be changed at any time of the day.
+- Have another class called "Scheduler" which takes an array of "Task"s, a set date, and a timetable of tasks to do at specific times of the day such as grooming, walking, feeding, etc. Tasks can be removed and added at any time for the "Scheduler" class.
 
 **b. Design changes**
 

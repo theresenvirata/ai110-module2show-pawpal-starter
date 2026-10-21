@@ -1,0 +1,32 @@
+classDiagram
+    class Owner {
+        +str name
+        +list~Pet~ pets
+        +Scheduler planner
+        +add_pet(pet: Pet) None
+        +remove_pet(pet: Pet) None
+    }
+    class Pet {
+        +str name
+        +int age
+        +str breed
+    }
+    class Task {
+        +str title
+        +int priority
+        +Pet pet
+        +str time_availability
+        +set_priority(priority: int) None
+        +set_time_availability(time_availability: str) None
+    }
+    class Scheduler {
+        +list~Task~ tasks
+        +date date
+        +dict~time, Task~ timetable
+        +add_task(task: Task) None
+        +remove_task(task: Task) None
+    }
+    Owner "1" o-- "*" Pet : owns
+    Owner "1" --> "1" Scheduler : uses as planner
+    Scheduler "1" o-- "*" Task : schedules
+    Task "*" --> "1" Pet : is for
