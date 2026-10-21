@@ -122,6 +122,25 @@ PawPal+ keeps track of care tasks for all of an owner's pets and builds a daily 
 
 `explain_plan()` prints the timetable along with the reason for each placement and each skipped task.
 
+**Class diagram:** [`diagrams/uml_final.mmd`](diagrams/uml_final.mmd) (the Phase 1 design is in [`diagrams/uml_draft.mmd`](diagrams/uml_draft.mmd)).
+
+![PawPal+ class diagram](diagrams/uml_final.png)
+
+## ✨ Features
+
+- **Multi-pet planning.** One plan covers every pet. The `Scheduler` reads all tasks through `Owner.get_all_tasks()`, so tasks for different pets never get double-booked.
+- **Priority-first scheduling.** `generate_plan()` places HIGH tasks before MEDIUM and LOW. When two tasks have the same priority, the one with the shorter time window goes first, because it has fewer places it can fit.
+- **Time-window placement.** Each task is only placed inside its own window (for example, meds between 12:00 and 12:30) and inside the owner's day (`day_start` to `day_end`). Start times are tried every 5 minutes.
+- **Owner preferences.** If the owner prefers a time for a kind of task (for example, walks at 7:30), the scheduler tries the start times closest to it first. If that time is taken, it uses the closest free one.
+- **Sorting by time.** `sort_by_time()` lists tasks earliest first, by booked time once a task is scheduled, or by window start before that.
+- **Sorting by priority.** `sort_by_priority()` lists the most important tasks first. `generate_plan()` uses the same order to decide which task gets placed first.
+- **Filtering.** `filter_tasks()` narrows the list to one pet, to done or not-done tasks, or both. `get_due_tasks()` keeps only what's due on the plan date.
+- **Daily and weekly recurrence.** Marking a task complete creates its next occurrence: tomorrow for daily tasks, or the next matching weekday for weekly ones, even if it was completed late. Undoing a completion removes the copies it created.
+- **Conflict warnings.** `generate_plan()` never double-books. `detect_conflicts()` still checks every pair of timed tasks and returns a readable warning for each overlap, saying whether it's the same pet or different pets. Back-to-back tasks are not conflicts.
+- **Unscheduled tasks are reported, not dropped.** A task that can't fit goes into `unscheduled` with the reason, for example "no free 20-min slot between 09:00 and 09:20".
+- **Plan explanations.** Every placed task records why it landed there: "at your preferred time", "closest free slot to your preferred 08:30", or "earliest free slot in its window".
+- **Input validation.** Tasks with a zero duration, a window that ends before it starts, or a weekly repeat with no weekday are rejected with a clear error, and so is a second pet with the same name.
+
 
 ## 📐 Smarter Scheduling
 
@@ -140,16 +159,104 @@ PawPal+ keeps track of care tasks for all of an owner's pets and builds a daily 
 **Recurring tasks.** When a daily or weekly task is marked complete (`Task.mark_complete()` or `Scheduler.mark_task_complete()`), `next_occurrence()` makes a fresh copy. The copy's `due_date` is the next day for daily tasks, or the same weekday next week for weekly ones, and it is added to the same pet. `is_due()` treats a completed task as finished for good and doesn't let the new copy show up before its `due_date`, so a day never gets two copies of the same task. Completing a task twice does nothing the second time. `mark_incomplete()` removes the copy that was created.
 
 **Conflict detection.** `generate_plan()` uses `has_conflict()` so it never schedules two overlapping tasks. A time can still be set by hand, though, so `detect_conflicts()` checks every pair of timed tasks, for the same pet or different pets. It returns a list of warnings such as `Warning: Morning walk for Biscuit (07:30-08:00) overlaps Thyroid meds for Mochi (07:30-07:35) [different pets]`. An empty list means no conflicts, and it never raises an error. Both methods use the same `overlaps()` check: tasks that share at least one minute conflict, and back-to-back tasks (one ends at 8:00, the next starts at 8:00) don't.
-| Recurring tasks | | e.g., daily vs. weekly |
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+Start the app with `streamlit run app.py` (with the virtual environment activated).
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+### Main UI features
+
+| Area | What you can do |
+|------|-----------------|
+| **Sidebar: Plan settings** | Set the owner's name, the date to plan, and when the day starts and ends. Save a preferred time for any task category (for example, walks around 07:30) and remove it again. |
+| **Pets** | Add a pet with name, age, and breed. A table shows each pet with how many tasks are due on the plan date and how many are done. A second pet with the same name is rejected with an error. |
+| **Tasks** | Add a task for any pet: description, category, priority, duration, time window, and whether it repeats daily or weekly. The task table can be filtered by pet and by status (to do or done) and sorted by time or priority. Each row shows a status: 📅 Due, ⏳ not due yet, or ✅ Done. |
+| **Mark complete / Undo** | Pick a task and mark it complete. The app confirms when the next occurrence is due. Undo puts a completed task back and removes that next occurrence. |
+| **Schedule** | Click **Generate schedule** to see summary numbers (tasks scheduled, busy minutes, tasks that couldn't fit, conflicts), a time-ordered timetable with a "Why here" column, a green confirmation when nothing overlaps, a yellow warning for each task that couldn't fit, and the full plain-text explanation. The schedule refreshes automatically as you add or complete tasks. |
+
+### Example workflow
+
+1. In the sidebar, keep the owner as **Jordan**, set the day to start at **07:00**, and save a preference: **Walk** around **07:30**.
+2. Under **Pets**, add **Biscuit** (3, Golden Retriever) and **Mochi** (5, Tabby Cat).
+3. Under **Tasks**, add:
+   - Biscuit: *Morning walk*, Walk, High, 30 min, 07:00-09:00
+   - Biscuit: *Breakfast*, Feeding, High, 10 min, 08:00-08:30
+   - Mochi: *Thyroid meds*, Meds, High, 5 min, 12:00-12:30
+   - Mochi: *Laser pointer play*, Enrichment, Medium, 20 min, 17:00-19:00
+4. Set **Sort by** to *Time* to see the tasks in the order they can start, or filter **Show pet** to *Mochi* to see only Mochi's tasks.
+5. Click **Generate schedule**. The walk lands at 07:30 ("at your preferred time"), breakfast at 08:00, meds at 12:00, and play at 17:00, with "No overlapping tasks" confirmed.
+6. Mark *Breakfast for Biscuit* complete. The app says the next breakfast is due tomorrow, the task's status changes to ✅ Done, and the schedule drops it for today.
+
+### Key Scheduler behaviors shown
+
+- **Sorting:** the task table uses `sort_by_time()` or `sort_by_priority()`, and the timetable is always in time order.
+- **Filtering:** the pet and status filters call `filter_tasks()`, and only tasks where `is_due()` is true for the plan date are scheduled.
+- **Preferences:** a task with a preferred time is placed at or as close to it as possible.
+- **Recurrence:** completing a task creates its next occurrence, and undo removes it.
+- **Conflict warnings:** the schedule runs `detect_conflicts()` and shows a warning for any overlap. The CLI demo below moves tasks onto the same time on purpose to show the warnings.
+- **Couldn't-fit warnings:** tasks with no free slot are listed with the reason, never dropped silently.
+
+### Sample CLI output (`python main.py`)
+
+```
+--- Tasks as added ---
+  from 18:00  Brushing for Biscuit
+  from 08:00  Breakfast for Biscuit
+  from 07:00  Morning walk for Biscuit
+  from 17:00  Laser pointer play for Mochi
+  from 12:00  Thyroid meds for Mochi
+
+
+--- Sorted by time (before scheduling) ---
+  from 07:00  Morning walk for Biscuit
+  from 08:00  Breakfast for Biscuit
+  from 12:00  Thyroid meds for Mochi
+  from 17:00  Laser pointer play for Mochi
+  from 18:00  Brushing for Biscuit
+
+Completed Breakfast for Biscuit; next one is due Thursday 22 October.
+
+--- Sorted by time (after scheduling) ---
+       07:30  Morning walk for Biscuit
+       08:00  Breakfast for Biscuit [done]
+  from 08:00  Breakfast for Biscuit
+       12:00  Thyroid meds for Mochi
+       17:00  Laser pointer play for Mochi
+  from 18:00  Brushing for Biscuit
+
+
+--- Only Mochi's tasks ---
+       17:00  Laser pointer play for Mochi
+       12:00  Thyroid meds for Mochi
+
+
+--- Completed tasks ---
+       08:00  Breakfast for Biscuit [done]
+
+
+--- Biscuit's incomplete tasks, by time ---
+       07:30  Morning walk for Biscuit
+  from 08:00  Breakfast for Biscuit
+  from 18:00  Brushing for Biscuit
+
+============================================================
+Today's Schedule
+============================================================
+Plan for Jordan on Wednesday 21 October 2026:
+  07:30-08:00  Morning walk for Biscuit [HIGH] - at your preferred time
+  08:00-08:10  Breakfast for Biscuit [HIGH] - earliest free slot in its window
+  12:00-12:05  Thyroid meds for Mochi [HIGH] - earliest free slot in its window
+  17:00-17:20  Laser pointer play for Mochi [MEDIUM] - earliest free slot in its window
+
+--- Conflict check on the generated plan ---
+  No conflicts.
+
+--- Conflict check after moving Mochi's tasks to 07:30 ---
+  Warning: Morning walk for Biscuit (07:30-08:00) overlaps Laser pointer play for Mochi (07:30-07:50) [different pets]
+  Warning: Morning walk for Biscuit (07:30-08:00) overlaps Thyroid meds for Mochi (07:30-07:35) [different pets]
+  Warning: Laser pointer play for Mochi (07:30-07:50) overlaps Thyroid meds for Mochi (07:30-07:35) [same pet]
+```
+
+Brushing is a weekly task due on Sundays, so it isn't in Wednesday's schedule.
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->

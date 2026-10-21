@@ -60,19 +60,39 @@
 - I also changed the AI's structure to match the assignment. Its version had tasks stored in the Scheduler and the Owner holding a planner. The assignment needed each Pet to hold its own tasks and the Scheduler to read them through an Owner method (`get_all_tasks()`), so I had it restructure the classes that way.
 - To verify the AI's work, I ran `main.py` and read the printed schedule to make sure the times made sense and nothing overlapped. I also ran `pytest` and checked that the tests passed, and compared the code against the README's requirements and the UML diagram to make sure they matched.
 
+**c. AI strategy**
+
+- **Most effective features:**
+  - **Agent mode editing several files at once.** One request could update `pawpal_system.py`, the UML diagram, and the README together, so they didn't drift apart.
+  - **The AI running code itself.** It ran `main.py`, `pytest`, and a headless test of the Streamlit app after making changes, so I saw real output and not just "this should work". When I asked it to add tests, it found that plain `pytest` couldn't import my code and fixed it with a `pytest.ini`.
+  - **Asking for a review before writing logic.** The review of my skeleton caught a missing duration, a missing plan method, and a field name that hid a type before any of those turned into bugs.
+- **A suggestion I modified to keep the design clean:** in the AI's first version, the `Owner` held a `Scheduler` as its `planner`, and the Scheduler kept its own list of tasks. That meant tasks lived in a different place than the pets they belonged to, and removing a pet could leave its tasks behind. I had it change the structure so each `Pet` holds its own tasks, the `Owner` has one method that collects them (`get_all_tasks()`), and the `Scheduler` reads only through that method. Now there is one place where tasks live, and removing a pet removes its tasks automatically.
+- **Separate chat sessions for different phases:** I used one session for design, the class skeleton, and the first implementation, and a separate one for the Phase 3 algorithms (sorting, filtering, conflict detection, recurrence) and the tests. Each session only had to focus on one goal, so the AI's answers stayed on that phase instead of mixing in older ideas. Starting fresh also made me write down where the project stood (in the README, the UML, and this reflection), which made it easier to pick back up.
+- **Being the "lead architect":** the AI can write a lot of working code quickly, but it makes choices I didn't ask for and fills gaps with its own guesses. My job was to know what the system needed and to check the AI's work against that. I kept the README requirements and the UML as my source of truth, asked for summaries of what changed and why, and read and ran the results myself. The AI was best at doing the work. I was responsible for deciding what the work should be and whether it was right.
+
 ---
 
 ## 4. Testing and Verification
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+- `tests/test_pawpal.py` has 21 tests covering:
+  - **Basics:** marking a task complete changes its status, and adding a task increases the pet's task count.
+  - **Sorting:** `sort_by_time()` returns tasks in time order and uses the booked time once a task is scheduled. `sort_by_priority()` puts the highest priority first and breaks ties by the tighter time window.
+  - **Recurring tasks:** completing a daily task creates a copy due tomorrow, even from Dec 31 to Jan 1. Completing a weekly task, even late, creates a copy due on its next weekday. Completing twice or undoing a completion doesn't leave extra copies.
+  - **Conflict detection:** overlapping tasks and tasks with the same start time are flagged for the same pet or different pets, while back-to-back and unscheduled tasks are not.
+  - **Scheduling boundaries:** a task that exactly fills its window gets scheduled, a task longer than its window ends up unscheduled, a generated plan has no conflicts, and generating twice gives the same plan.
+- These tests matter because they cover the parts that are easy to get subtly wrong: off-by-one times (back-to-back tasks), dates that roll over months and years, and recurring tasks that could double up or never come back. A bug there would mean a pet missing a meal or medication.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+- I'm confident (5/5) the scheduler works for the cases it was built for. All 21 tests pass, `main.py` gives the schedule I expect, and the Streamlit app was tested by adding pets and tasks, generating a plan, and marking tasks complete and undoing them.
+- Edge cases I would test next:
+  - a task whose window crosses midnight (for example, 23:00 to 01:00)
+  - a preferred time that falls outside a task's window
+  - a day so full that a HIGH task can't fit, to check it's reported clearly
+  - a weekly task created on a different weekday than the one it repeats on
+  - a pet removed while its tasks are in the current plan
 
 ---
 
@@ -80,12 +100,15 @@
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+- I'm most satisfied that the scheduler explains itself. Every task in the plan says why it was placed there ("at your preferred time", "closest free slot to your preferred 08:30"), and tasks that don't fit are listed with the reason instead of disappearing. That makes the plan easy to trust and easy to check.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+- Save the owner, pets, and tasks to a file. Right now everything is kept in the Streamlit session, so refreshing the page loses it.
+- Support tasks at a fixed time, like a vet appointment at 14:00, not just a window.
+- Let the scheduler rearrange tasks it already placed when a new task can't fit, instead of placing each task once and never going back.
+- Allow editing a task in the app. The backend has methods for this (`set_priority()`, `set_duration()`, `set_time_availability()`), but the UI only adds and completes tasks.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+- Design first, then let the AI build. Having a UML diagram and a clear list of requirements meant I could tell when the AI went in a different direction, and I could ask for specific fixes instead of starting over. The AI made the coding much faster, but the design decisions, and checking that the code matched them, were still my job.

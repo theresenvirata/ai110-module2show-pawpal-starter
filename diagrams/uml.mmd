@@ -1,5 +1,6 @@
 classDiagram
-    %% PawPal+ design. Keep this file updated so it matches your final implementation.
+    %% PawPal+ final design. Matches pawpal_system.py.
+    %% Phase 1 design: diagrams/uml_draft.mmd
 
     class Owner {
         +str name
@@ -9,7 +10,7 @@ classDiagram
         +remove_pet(pet: Pet) None
         +get_pet(name: str) Pet
         +get_all_tasks() list~Task~
-        +set_preference(category: TaskCategory, preferred_time: time) None
+        +set_preference(category, preferred_time) None
         +remove_preference(category: TaskCategory) None
     }
 
@@ -20,6 +21,59 @@ classDiagram
         +list~Task~ tasks
         +add_task(task: Task) None
         +remove_task(task: Task) None
+    }
+
+    class Task {
+        +str description
+        +TaskCategory category
+        +Priority priority
+        +int duration_minutes
+        +time available_from
+        +time available_until
+        +Frequency frequency
+        +int weekday
+        +date due_date
+        +bool completed
+        +date completed_on
+        +time scheduled_at
+        +Pet pet
+        +Task next_task
+        +set_priority(priority: Priority) None
+        +set_duration(duration_minutes: int) None
+        +set_time_availability(available_from, available_until) None
+        +mark_complete(on: date) Task
+        +mark_incomplete() None
+        +next_occurrence(after: date) Task
+        +is_due(on: date) bool
+        +label() str
+    }
+
+    class Scheduler {
+        +Owner owner
+        +date plan_date
+        +time day_start
+        +time day_end
+        +dict~time, Task~ timetable
+        +list~Task~ unscheduled
+        +dict~Task, str~ reasons
+        +get_due_tasks() list~Task~
+        +filter_tasks(pet_name: str, completed: bool) list~Task~
+        +sort_by_priority(tasks: list~Task~) list~Task~
+        +sort_by_time(tasks: list~Task~) list~Task~
+        +mark_task_complete(task: Task) Task
+        +has_conflict(start: time, task: Task) bool
+        +detect_conflicts(tasks: list~Task~) list~str~
+        -_candidate_starts(task: Task) list~int~
+        +generate_plan() dict~time, Task~
+        +explain_plan() str
+    }
+
+    class TimeHelpers {
+        <<module functions>>
+        +to_minutes(t: time) int
+        +to_time(minutes: int) time
+        +overlaps(start_a, task_a, start_b, task_b) bool
+        -_span(task: Task) str
     }
 
     class Priority {
@@ -45,49 +99,14 @@ classDiagram
         WEEKLY
     }
 
-    class Task {
-        +str description
-        +TaskCategory category
-        +Priority priority
-        +int duration_minutes
-        +time available_from
-        +time available_until
-        +Frequency frequency
-        +int weekday
-        +bool completed
-        +date completed_on
-        +time scheduled_at
-        +Pet pet
-        +set_priority(priority: Priority) None
-        +set_duration(duration_minutes: int) None
-        +set_time_availability(available_from: time, available_until: time) None
-        +mark_complete(on: date) None
-        +mark_incomplete() None
-        +is_due(on: date) bool
-        +label() str
-    }
-
-    class Scheduler {
-        +Owner owner
-        +date plan_date
-        +time day_start
-        +time day_end
-        +dict~time, Task~ timetable
-        +list~Task~ unscheduled
-        +dict~Task, str~ reasons
-        +get_due_tasks() list~Task~
-        +filter_tasks(pet_name: str, completed: bool) list~Task~
-        +sort_by_priority(tasks: list~Task~) list~Task~
-        +mark_task_complete(task: Task) None
-        +has_conflict(start: time, task: Task) bool
-        +generate_plan() dict~time, Task~
-        +explain_plan() str
-    }
-
     Owner "1" o-- "*" Pet : owns
-    Pet "1" *-- "*" Task : has
+    Pet "1" *-- "*" Task : tasks
+    Task "*" --> "0..1" Pet : pet (back-reference)
+    Task "1" --> "0..1" Task : next_task (next occurrence)
     Scheduler "1" --> "1" Owner : reads tasks via get_all_tasks()
-    Owner ..> TaskCategory : sets preferences by
-    Task --> Priority : has
-    Task --> TaskCategory : has
-    Task --> Frequency : repeats
+    Scheduler ..> Task : sorts, filters, places, completes
+    Scheduler ..> TimeHelpers : uses overlaps()
+    Owner ..> TaskCategory : preferences keyed by
+    Task --> Priority
+    Task --> TaskCategory
+    Task --> Frequency
